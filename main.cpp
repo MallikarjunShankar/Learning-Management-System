@@ -167,7 +167,7 @@ public:
         courseName = name;
     }
 
-    string getCourseName() {
+    string getCourseName() const {
         return courseName;
     }
 
@@ -249,3 +249,49 @@ public:
     }
 };
 
+class CourseController {
+
+private:
+    vector<Course> courses;
+
+public:
+
+    void createCourse(string courseName) {
+        if (courseName.empty()) {
+            throw runtime_error("Course name cannot be empty");
+        }
+
+        for (const auto &c : courses) {
+            if (c.getCourseName() == courseName) {
+                throw runtime_error("Course already exists: " + courseName);
+            }
+        }
+
+        Course c(courseName);
+        courses.push_back(c);
+
+        cout << "Course created: " << courseName << endl;
+    }
+
+    Course* getCourse(string courseName) {
+        for (auto &c : courses) {
+            if (c.getCourseName() == courseName) {
+                return &c;
+            }
+        }
+
+        throw runtime_error("Course not found: " + courseName);
+    }
+
+    void listCourses() {
+        if (courses.empty()) {
+            cout << "No courses available.\n";
+            return;
+        }
+
+        cout << "\nAvailable Courses:\n";
+        for (const auto &c : courses) {
+            cout << "- " << c.getCourseName() << endl;
+        }
+    }
+};
