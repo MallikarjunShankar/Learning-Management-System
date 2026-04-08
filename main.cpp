@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <fstream>
+#include <stdexcept>
 
 using namespace std;
 
@@ -69,6 +70,16 @@ public:
     }
 
     void enroll(string courseName) {
+        if (courseName.empty()) {
+            throw runtime_error("Course name cannot be empty");
+        }
+
+        for (const auto &c : courses) {
+            if (c.courseName == courseName) {
+                throw runtime_error("Already enrolled in course: " + courseName);
+            }
+        }
+
         CourseProgress cp;
         cp.courseName = courseName;
         cp.completed = false;
@@ -79,22 +90,30 @@ public:
     }
 
     void markComplete(string courseName){
-        for (auto &c : courses) {
-            if (c.courseName == courseName) {
-                c.completed = true;
-                cout << "Course marked complete: " << courseName << endl;
-                return;
-            }
+    for (auto &c : courses) {
+        if (c.courseName == courseName) {
+            c.completed = true;
+            cout << "Course marked complete: " << courseName << endl;
+            return;
         }
-        cout << "Course not found" << endl;
     }
+    throw runtime_error("Course not found: " + courseName);
+}
 
     void viewCourses() {
-        cout << "\nEnrolled Courses: \n";
-        for (const auto &c : courses) {
-            cout << "- " << c.courseName << " | Status: " << (c.completed ? "Completed" : "In Progress") << endl;
-        }
+    if (courses.empty()) {
+        cout << "No courses enrolled\n";
+        return;
     }
+
+    cout << "\nEnrolled Courses:\n";
+    for (const auto &c : courses) {
+        cout << "- " << c.courseName
+             << " | Status: "
+             << (c.completed ? "Completed" : "In Progress")
+             << endl;
+    }
+}
 
     void submitAssignment(string courseName) {
         cout << "Assignment submitted for: " << courseName << endl;
@@ -129,5 +148,58 @@ public:
 
     string getSubjectName() {
         return subjectName;
+    }
+};
+
+class Course {
+
+private:
+
+    string courseName;
+    vector<string> notesFiles;
+
+public:
+
+    Course() {
+    }
+
+    Course(string name) {
+        courseName = name;
+    }
+
+    string getCourseName() {
+        return courseName;
+    }
+
+    void addNoteFile(string filePath) {
+        if (filePath.empty()) {
+            throw runtime_error("File path cannot be empty");
+        }
+
+        notesFiles.push_back(filePath);
+    }
+
+    void displayContent() {
+        if (notesFiles.empty()) {
+            cout << "No notes available for this course" << endl;
+            return;
+        }
+
+        for (const auto &file : notesFiles) {
+            ifstream inFile(file);
+
+            if (!inFile) {
+                throw runtime_error("Error opening file: " + file);
+            }
+
+            cout << "\nContent from: " << file << " ---\n";
+
+            string line;
+            while (getline(inFile, line)) {
+                cout << line << endl;
+            }
+
+            inFile.close();
+        }
     }
 };
