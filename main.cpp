@@ -203,3 +203,49 @@ public:
         }
     }
 };
+
+class AuthController {
+
+private:
+    vector<Student> students;
+    vector<Teacher> teachers;
+
+public:
+
+    void registerStudent(string id, string name, string email, string password) {
+        Student s(id, name, email, password);
+        students.push_back(s);
+
+        cout << "Student registered successfully" << endl;
+    }
+
+    void registerTeacher(string id, string name, string email, string password, int code, string subject) {
+        Teacher t(id, name, email, password, code, subject);
+        teachers.push_back(t);
+
+        cout << "Teacher registered successfully" << endl;
+    }
+
+    Student* loginStudent(string email, string password) {
+        for (auto& s : students) {
+            if (s.login(email, password)) {
+                cout << "Student login successful." << endl;
+                return &s;
+            }
+        }
+
+        throw runtime_error("Invalid student credentials");
+    }
+
+    Teacher* loginTeacher(string email, string password) {
+        for (auto& t : teachers) {
+            if (t.login(email, password)) {
+                cout << "Teacher login successful." << endl;
+                return &t;
+            }
+        }
+
+        throw runtime_error("Invalid teacher credentials");
+    }
+};
+
