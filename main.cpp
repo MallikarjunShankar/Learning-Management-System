@@ -207,6 +207,7 @@ public:
 class AuthController {
 
 private:
+
     vector<Student> students;
     vector<Teacher> teachers;
 
@@ -252,6 +253,7 @@ public:
 class CourseController {
 
 private:
+
     vector<Course> courses;
 
 public:
@@ -299,6 +301,7 @@ public:
 class NotesController {
 
 private:
+
     CourseController &courseController;
 
 public:
@@ -319,5 +322,74 @@ public:
     void viewCourseNotes(string courseName) {
         Course* course = courseController.getCourse(courseName);
         course->displayContent();
+    }
+};
+
+struct Assignment {
+    string title;
+    bool submitted;
+};
+
+class AssignmentController {
+
+private:
+
+    vector<pair<string, vector<Assignment>>> courseAssignments;
+
+public:
+
+    void createAssignment(string courseName, string title){
+        if (title.empty()) {
+            throw runtime_error("Assignment title cannot be empty");
+        }
+
+        for (auto &entry : courseAssignments) {
+            if (entry.first == courseName) {
+                entry.second.push_back({title, false});
+                cout << "Assignment created for " << courseName << endl;
+                return;
+            }
+        }
+
+        vector<Assignment> newList;
+        newList.push_back({title, false});
+        courseAssignments.push_back({courseName, newList});
+
+        cout << "Assignment created for " << courseName << endl;
+    }
+
+    void submitAssignment(string courseName, string title) {
+        for (auto &entry : courseAssignments) {
+            if (entry.first == courseName) {
+                for (auto &a : entry.second) {
+                    if (a.title == title) {
+                        a.submitted = true;
+                        cout << "Assignment submitted: " << title << endl;
+                        return;
+                    }
+                }
+                throw runtime_error("Assignment not found: " + title);
+            }
+        }
+
+        throw runtime_error("Course has no assignments: " + courseName);
+    } 
+
+    void viewAssignments(string courseName) {
+        for (const auto &entry : courseAssignments) {
+            if (entry.first == courseName) {
+                cout << "\nAssignments for " << courseName << ":\n";
+
+                for (const auto &a : entry.second) {
+                    cout << "- " << a.title
+                         << " | Status: "
+                         << (a.submitted ? "Submitted" : "Pending")
+                         << endl;
+                }
+                return;
+            }
+        }
+
+        cout << "No assignments for this course.\n";
     }
 };
