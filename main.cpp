@@ -295,3 +295,29 @@ public:
         }
     }
 };
+
+class NotesController {
+
+private:
+    CourseController &courseController;
+
+public:
+
+    NotesController(CourseController &cc) : courseController(cc) {
+    }
+
+    void addNoteToCourse(string courseName, string filePath) {
+        if (filePath.empty()) {
+            throw runtime_error("File path cannot be empty");
+        }
+
+        Course* course = courseController.getCourse(courseName);
+        course->addNoteFile(filePath);
+        cout << "Notes added to course: " << courseName << endl;
+    }
+
+    void viewCourseNotes(string courseName) {
+        Course* course = courseController.getCourse(courseName);
+        course->displayContent();
+    }
+};
