@@ -3,393 +3,589 @@
 #include <string>
 #include <fstream>
 #include <stdexcept>
+#include <sstream>
+#include <algorithm>
 
 using namespace std;
 
-class User {
-
-private:
-
-    string id;
-    string name;
-    string email;
-    string password;
-
+// Input validation utilities
+class InputHandler {
 public:
-
-    User(){}
-
-    User(string ID, string NAME, string EMAIL, string PASSWORD) {
-        id = ID;
-        name = NAME;
-        email = EMAIL;
-        password = PASSWORD;
+    static string getSafeString(const string& prompt = "") {
+        if (!prompt.empty()) cout << prompt;
+        string input;
+        getline(cin, input);
+        
+        // Trim whitespace
+        input.erase(0, input.find_first_not_of(" \t\n\r"));
+        input.erase(input.find_last_not_of(" \t\n\r") + 1);
+        
+        if (input.empty()) {
+            throw runtime_error("Input cannot be empty");
+        }
+        return input;
     }
 
-    void registerUser(string ID, string NAME, string EMAIL, string PASSWORD) {
-        id = ID;
-        name = NAME;
-        email = EMAIL;
-        password = PASSWORD;
+    static int getSafeInt(const string& prompt = "") {
+        if (!prompt.empty()) cout << prompt;
+        int value;
+        while (!(cin >> value)) {
+            cin.clear();
+            cin.ignore(10000, '\n');
+            cout << "Invalid input. Please enter a number: ";
+        }
+        cin.ignore(10000, '\n');
+        return value;
     }
 
-    bool login(string EMAIL, string PASSWORD) {
-        return(EMAIL == email && PASSWORD == password);
-    }
-
-    string getName(){
-        return name;
-    }
-
-    string getEmail(){
+    static string getSafeEmail(const string& prompt = "") {
+        string email = getSafeString(prompt);
+        if (email.find('@') == string::npos) {
+            throw runtime_error("Invalid email format");
+        }
         return email;
-    }
-
-    string getId(){
-        return id;
     }
 };
 
+// File I/O utilities with existence checks
+class FileManager {
+public:
+    static bool fileExists(const string& filename) {
+        ifstream file(filename);
+        return file.good();
+    }
+
+    static void saveLine(const string& filename, const string& data) {
+        ofstream file(filename, ios::app);
+        if (!file.is_open()) {
+            throw runtime_error("Cannot open file: " + filename);
+        }
+        file << data << endl;
+        file.close();
+    }
+
+    static vector<string> loadFile(const string& filename) {
+        vector<string> data;
+        if (!fileExists(filename)) {
+            return data; // Return empty vector if file doesn't exist
+        }
+        
+        ifstream file(filename);
+        if (!file.is_open()) {
+            throw runtime_error("Cannot open file: " + filename);
+        }
+        
+        string line;
+        while (getline(file, line)) {
+            if (!line.empty()) {
+                data.push_back(line);
+            }
+        }
+        file.close();
+        return data;
+    }
+};
+
+// Base user
+class User {
+protected:
+    string id, name, email, password;
+
+public:
+    User() {}
+
+    User(string ID, string NAME, string EMAIL, string PASSWORD)
+        : id(ID), name(NAME), email(EMAIL), password(PASSWORD) {}
+
+    virtual bool login(string EMAIL, string PASSWORD) {
+        return EMAIL == email && PASSWORD == password;
+    }
+
+    virtual string getRole() = 0;
+
+    string getEmail() { return email; }
+    string getName() { return name; }
+    string getID() { return id; }
+};
+
+// Student role
 struct CourseProgress {
     string courseName;
     bool completed;
 };
 
 class Student : public User {
-
 private:
-
     vector<CourseProgress> courses;
+    bool enrollmentsLoaded = false;
 
 public:
+    Student() {}
 
-    Student(){
-    }
+    Student(string id, string name, string email, string password)
+        : User(id, name, email, password) {}
 
-    Student(string id, string name, string email, string password) : User(id, name, email, password) {
+    string getRole() override { return "Student"; }
+
+    void loadEnrollments() {
+        if (enrollmentsLoaded) return;
+        
+        auto data = FileManager::loadFile("enrollments.txt");
+        for (auto &line : data) {
+            stringstream ss(line);
+            string storedEmail, courseName;
+            
+            getline(ss, storedEmail, '|');
+            getline(ss, courseName, '|');
+            
+            if (storedEmail == email) {
+                auto it = find_if(courses.begin(), courses.end(),
+                    [&](CourseProgress c) { return c.courseName == courseName; });
+                
+                if (it == courses.end()) {
+                    courses.push_back({courseName, false});
+                }
+            }
+        }
+        enrollmentsLoaded = true;
     }
 
     void enroll(string courseName) {
         if (courseName.empty()) {
             throw runtime_error("Course name cannot be empty");
         }
+        
+        auto it = find_if(courses.begin(), courses.end(),
+            [&](CourseProgress c) { return c.courseName == courseName; });
 
-        for (const auto &c : courses) {
-            if (c.courseName == courseName) {
-                throw runtime_error("Already enrolled in course: " + courseName);
-            }
-        }
+        if (it != courses.end())
+            throw runtime_error("Already enrolled");
 
-        CourseProgress cp;
-        cp.courseName = courseName;
-        cp.completed = false;
+        courses.push_back({courseName, false});
+        FileManager::saveLine("enrollments.txt", email + "|" + courseName);
 
-        courses.push_back(cp);
-
-        cout << "Enrolled in course: " << courseName << endl;
+        cout << "Enrolled in " << courseName << endl;
     }
-
-    void markComplete(string courseName){
-    for (auto &c : courses) {
-        if (c.courseName == courseName) {
-            c.completed = true;
-            cout << "Course marked complete: " << courseName << endl;
-            return;
-        }
-    }
-    throw runtime_error("Course not found: " + courseName);
-}
 
     void viewCourses() {
-    if (courses.empty()) {
-        cout << "No courses enrolled\n";
-        return;
-    }
+        loadEnrollments();
+        
+        if (courses.empty()) {
+            cout << "No courses enrolled\n";
+            return;
+        }
 
-    cout << "\nEnrolled Courses:\n";
-    for (const auto &c : courses) {
-        cout << "- " << c.courseName
-             << " | Status: "
-             << (c.completed ? "Completed" : "In Progress")
-             << endl;
-    }
-}
-
-    void submitAssignment(string courseName) {
-        cout << "Assignment submitted for: " << courseName << endl;
+        for (auto &c : courses) {
+            cout << c.courseName << " | "
+                 << (c.completed ? "Completed" : "In Progress") << endl;
+        }
     }
 };
 
+// Teacher role
 class Teacher : public User {
-
 private:
-
     int subjectCode;
     string subjectName;
 
 public:
-
-    Teacher() {
-    }
+    Teacher() {}
 
     Teacher(string id, string name, string email, string password, int code, string subject)
-        : User(id, name, email, password) {
-        subjectCode = code;
-        subjectName = subject;
+        : User(id, name, email, password), subjectCode(code), subjectName(subject) {}
+
+    string getRole() override { return "Teacher"; }
+
+    void createAssignment(string courseName, string title) {
+        if (courseName.empty() || title.empty()) {
+            throw runtime_error("Course name and title cannot be empty");
+        }
+        FileManager::saveLine("assignments.txt", courseName + "|" + title);
+        cout << "Assignment created.\n";
     }
 
-    void createAssignment(string courseName) {
-        cout << "Assignment created for: " << courseName << endl;
-    }
+    void addNotes(string courseName) {
+        if (courseName.empty()) {
+            throw runtime_error("Course name cannot be empty");
+        }
+        
+        string filename = courseName + "_notes.txt";
+        ofstream file(filename, ios::app);
+        
+        if (!file.is_open()) {
+            throw runtime_error("Cannot open notes file");
+        }
 
-    void addNotes(string filePath) {
-        cout << "Note added: " << filePath << endl;
-    }
+        cout << "Enter notes (type END on a new line to stop):\n";
 
-    string getSubjectName() {
-        return subjectName;
+        string line;
+        while (getline(cin, line)) {
+            if (line == "END") break;
+            file << line << endl;
+        }
+
+        file.close();
+        cout << "Notes saved.\n";
     }
 };
 
+// Course structure
 class Course {
-
 private:
-
     string courseName;
-    vector<string> notesFiles;
 
 public:
+    Course() {}
+    Course(string name) : courseName(name) {}
 
-    Course() {
-    }
-
-    Course(string name) {
-        courseName = name;
-    }
-
-    string getCourseName() const {
-        return courseName;
-    }
-
-    void addNoteFile(string filePath) {
-        if (filePath.empty()) {
-            throw runtime_error("File path cannot be empty");
-        }
-
-        notesFiles.push_back(filePath);
-    }
-
-    void displayContent() {
-        if (notesFiles.empty()) {
-            cout << "No notes available for this course" << endl;
-            return;
-        }
-
-        for (const auto &file : notesFiles) {
-            ifstream inFile(file);
-
-            if (!inFile) {
-                throw runtime_error("Error opening file: " + file);
-            }
-
-            cout << "\nContent from: " << file << " ---\n";
-
-            string line;
-            while (getline(inFile, line)) {
-                cout << line << endl;
-            }
-
-            inFile.close();
-        }
-    }
+    string getCourseName() const { return courseName; }
 };
 
+// Authentication manager
 class AuthController {
-
 private:
-
     vector<Student> students;
     vector<Teacher> teachers;
 
 public:
+    void loadFromFile() {
+        auto data = FileManager::loadFile("users.txt");
+
+        for (auto &line : data) {
+            stringstream ss(line);
+            string id, name, email, password, role;
+
+            getline(ss, id, '|');
+            getline(ss, name, '|');
+            getline(ss, email, '|');
+            getline(ss, password, '|');
+            getline(ss, role, '|');
+
+            if (role == "Student") {
+                students.emplace_back(id, name, email, password);
+            }
+            else if (role == "Teacher") {
+                teachers.emplace_back(id, name, email, password, 0, "NA");
+            }
+        }
+    }
 
     void registerStudent(string id, string name, string email, string password) {
-        Student s(id, name, email, password);
-        students.push_back(s);
-
-        cout << "Student registered successfully" << endl;
+        // Validate inputs
+        if (id.empty() || name.empty() || email.empty() || password.empty()) {
+            throw runtime_error("All fields required");
+        }
+        if (email.find('@') == string::npos) {
+            throw runtime_error("Invalid email format");
+        }
+        
+        students.emplace_back(id, name, email, password);
+        FileManager::saveLine("users.txt", id + "|" + name + "|" + email + "|" + password + "|Student");
+        cout << "Student registered\n";
     }
 
     void registerTeacher(string id, string name, string email, string password, int code, string subject) {
-        Teacher t(id, name, email, password, code, subject);
-        teachers.push_back(t);
-
-        cout << "Teacher registered successfully" << endl;
+        // Validate inputs
+        if (id.empty() || name.empty() || email.empty() || password.empty() || subject.empty()) {
+            throw runtime_error("All fields required");
+        }
+        if (email.find('@') == string::npos) {
+            throw runtime_error("Invalid email format");
+        }
+        
+        teachers.emplace_back(id, name, email, password, code, subject);
+        FileManager::saveLine("users.txt", id + "|" + name + "|" + email + "|" + password + "|Teacher");
+        cout << "Teacher registered\n";
     }
 
-    Student* loginStudent(string email, string password) {
-        for (auto& s : students) {
-            if (s.login(email, password)) {
-                cout << "Student login successful." << endl;
-                return &s;
+    // Use indices instead of pointers to avoid dangling pointers
+    int loginStudent(string email, string password) {
+        for (size_t i = 0; i < students.size(); i++) {
+            if (students[i].login(email, password)) {
+                students[i].loadEnrollments(); // Load enrollments on login
+                return (int)i;
             }
         }
-
-        throw runtime_error("Invalid student credentials");
+        throw runtime_error("Invalid student login");
     }
 
-    Teacher* loginTeacher(string email, string password) {
-        for (auto& t : teachers) {
-            if (t.login(email, password)) {
-                cout << "Teacher login successful." << endl;
-                return &t;
+    int loginTeacher(string email, string password) {
+        for (size_t i = 0; i < teachers.size(); i++) {
+            if (teachers[i].login(email, password)) {
+                return (int)i;
             }
         }
+        throw runtime_error("Invalid teacher login");
+    }
 
-        throw runtime_error("Invalid teacher credentials");
+    Student& getStudent(int index) {
+        if (index < 0 || index >= (int)students.size()) {
+            throw runtime_error("Invalid student index");
+        }
+        return students[index];
+    }
+
+    Teacher& getTeacher(int index) {
+        if (index < 0 || index >= (int)teachers.size()) {
+            throw runtime_error("Invalid teacher index");
+        }
+        return teachers[index];
     }
 };
 
+// Course manager
 class CourseController {
-
 private:
-
     vector<Course> courses;
 
 public:
-
-    void createCourse(string courseName) {
-        if (courseName.empty()) {
-            throw runtime_error("Course name cannot be empty");
+    void loadCoursesFromFile() {
+        if (!FileManager::fileExists("courses.txt")) {
+            return;
         }
-
-        for (const auto &c : courses) {
-            if (c.getCourseName() == courseName) {
-                throw runtime_error("Course already exists: " + courseName);
+        
+        auto data = FileManager::loadFile("courses.txt");
+        for (auto &c : data) {
+            if (!c.empty()) {
+                courses.emplace_back(c);
             }
         }
-
-        Course c(courseName);
-        courses.push_back(c);
-
-        cout << "Course created: " << courseName << endl;
     }
 
-    Course* getCourse(string courseName) {
-        for (auto &c : courses) {
-            if (c.getCourseName() == courseName) {
-                return &c;
-            }
+    void createCourse(string name) {
+        if (name.empty()) {
+            throw runtime_error("Course name cannot be empty");
         }
-
-        throw runtime_error("Course not found: " + courseName);
+        
+        if (exists(name)) {
+            throw runtime_error("Course already exists");
+        }
+        
+        courses.emplace_back(name);
+        FileManager::saveLine("courses.txt", name);
+        cout << "Course created\n";
     }
 
     void listCourses() {
         if (courses.empty()) {
-            cout << "No courses available.\n";
+            cout << "No courses available\n";
             return;
         }
+        
+        for (auto &c : courses)
+            cout << c.getCourseName() << endl;
+    }
 
-        cout << "\nAvailable Courses:\n";
-        for (const auto &c : courses) {
-            cout << "- " << c.getCourseName() << endl;
-        }
+    bool exists(string name) {
+        return any_of(courses.begin(), courses.end(),
+            [&](Course &c) { return c.getCourseName() == name; });
     }
 };
 
+// Notes manager
 class NotesController {
-
-private:
-
-    CourseController &courseController;
-
 public:
-
-    NotesController(CourseController &cc) : courseController(cc) {
-    }
-
-    void addNoteToCourse(string courseName, string filePath) {
-        if (filePath.empty()) {
-            throw runtime_error("File path cannot be empty");
+    void viewNotes(string courseName) {
+        if (courseName.empty()) {
+            throw runtime_error("Course name cannot be empty");
         }
-
-        Course* course = courseController.getCourse(courseName);
-        course->addNoteFile(filePath);
-        cout << "Notes added to course: " << courseName << endl;
-    }
-
-    void viewCourseNotes(string courseName) {
-        Course* course = courseController.getCourse(courseName);
-        course->displayContent();
+        
+        string filename = courseName + "_notes.txt";
+        
+        if (!FileManager::fileExists(filename)) {
+            cout << "No notes found for this course\n";
+            return;
+        }
+        
+        ifstream file(filename);
+        if (!file.is_open()) {
+            throw runtime_error("Cannot open notes file");
+        }
+        
+        string line;
+        bool hasContent = false;
+        
+        while (getline(file, line)) {
+            cout << line << endl;
+            hasContent = true;
+        }
+        
+        if (!hasContent) {
+            cout << "No notes found for this course\n";
+        }
+        
+        file.close();
     }
 };
 
-struct Assignment {
-    string title;
-    bool submitted;
-};
-
+// Assignment manager
 class AssignmentController {
-
-private:
-
-    vector<pair<string, vector<Assignment>>> courseAssignments;
-
 public:
-
-    void createAssignment(string courseName, string title){
-        if (title.empty()) {
-            throw runtime_error("Assignment title cannot be empty");
+    void submit(string email, string course, string title) {
+        if (email.empty() || course.empty() || title.empty()) {
+            throw runtime_error("Email, course, and title cannot be empty");
         }
-
-        for (auto &entry : courseAssignments) {
-            if (entry.first == courseName) {
-                entry.second.push_back({title, false});
-                cout << "Assignment created for " << courseName << endl;
-                return;
-            }
-        }
-
-        vector<Assignment> newList;
-        newList.push_back({title, false});
-        courseAssignments.push_back({courseName, newList});
-
-        cout << "Assignment created for " << courseName << endl;
+        FileManager::saveLine("submissions.txt", email + "|" + course + "|" + title);
+        cout << "Submitted\n";
     }
 
-    void submitAssignment(string courseName, string title) {
-        for (auto &entry : courseAssignments) {
-            if (entry.first == courseName) {
-                for (auto &a : entry.second) {
-                    if (a.title == title) {
-                        a.submitted = true;
-                        cout << "Assignment submitted: " << title << endl;
-                        return;
-                    }
-                }
-                throw runtime_error("Assignment not found: " + title);
+    void view(string course) {
+        if (course.empty()) {
+            throw runtime_error("Course name cannot be empty");
+        }
+        
+        auto data = FileManager::loadFile("assignments.txt");
+        bool found = false;
+
+        for (auto &line : data) {
+            stringstream ss(line);
+            string courseName, title;
+            
+            getline(ss, courseName, '|');
+            getline(ss, title, '|');
+            
+            // Exact match instead of substring
+            if (courseName == course) {
+                cout << title << endl;
+                found = true;
             }
         }
-
-        throw runtime_error("Course has no assignments: " + courseName);
-    } 
-
-    void viewAssignments(string courseName) {
-        for (const auto &entry : courseAssignments) {
-            if (entry.first == courseName) {
-                cout << "\nAssignments for " << courseName << ":\n";
-
-                for (const auto &a : entry.second) {
-                    cout << "- " << a.title
-                         << " | Status: "
-                         << (a.submitted ? "Submitted" : "Pending")
-                         << endl;
-                }
-                return;
-            }
+        
+        if (!found) {
+            cout << "No assignments found for this course\n";
         }
-
-        cout << "No assignments for this course.\n";
     }
 };
+
+// Main execution
+int main() {
+    AuthController auth;
+    CourseController courseCtrl;
+    NotesController notesCtrl;
+    AssignmentController assignCtrl;
+
+    auth.loadFromFile();
+    courseCtrl.loadCoursesFromFile();
+
+    int choice;
+
+    while (true) {
+        try {
+            cout << "\n==== Learning Management System ====\n";
+            cout << "1. Register Student\n2. Register Teacher\n3. Login Student\n4. Login Teacher\n0. Exit\n";
+            cout << "Enter choice: ";
+            
+            choice = InputHandler::getSafeInt();
+
+            if (choice == 1) {
+                cout << "\n--- Student Registration ---\n";
+                string id = InputHandler::getSafeString("Enter ID: ");
+                string name = InputHandler::getSafeString("Enter Name: ");
+                string email = InputHandler::getSafeEmail("Enter Email: ");
+                string password = InputHandler::getSafeString("Enter Password: ");
+                
+                auth.registerStudent(id, name, email, password);
+            }
+            else if (choice == 2) {
+                cout << "\n--- Teacher Registration ---\n";
+                string id = InputHandler::getSafeString("Enter ID: ");
+                string name = InputHandler::getSafeString("Enter Name: ");
+                string email = InputHandler::getSafeEmail("Enter Email: ");
+                string password = InputHandler::getSafeString("Enter Password: ");
+                int code = InputHandler::getSafeInt("Enter Subject Code: ");
+                string subject = InputHandler::getSafeString("Enter Subject Name: ");
+                
+                auth.registerTeacher(id, name, email, password, code, subject);
+            }
+            else if (choice == 3) {
+                cout << "\n--- Student Login ---\n";
+                string email = InputHandler::getSafeEmail("Enter Email: ");
+                string password = InputHandler::getSafeString("Enter Password: ");
+
+                int studentIdx = auth.loginStudent(email, password);
+                Student& student = auth.getStudent(studentIdx);
+
+                int ch;
+                do {
+                    cout << "\n-- Student Menu --\n";
+                    cout << "1. View Courses\n2. Enroll\n3. View Notes\n4. Submit Assignment\n0. Logout\n";
+                    cout << "Enter choice: ";
+                    
+                    ch = InputHandler::getSafeInt();
+
+                    if (ch == 1) {
+                        courseCtrl.listCourses();
+                    }
+                    else if (ch == 2) {
+                        string c = InputHandler::getSafeString("Enter course name: ");
+                        student.enroll(c);
+                    }
+                    else if (ch == 3) {
+                        string c = InputHandler::getSafeString("Enter course name: ");
+                        notesCtrl.viewNotes(c);
+                    }
+                    else if (ch == 4) {
+                        string c = InputHandler::getSafeString("Enter course name: ");
+                        string t = InputHandler::getSafeString("Enter assignment title: ");
+                        assignCtrl.submit(student.getEmail(), c, t);
+                    }
+                    else if (ch != 0) {
+                        cout << "Invalid choice\n";
+                    }
+
+                } while (ch != 0);
+                
+                cout << "Logged out\n";
+            }
+            else if (choice == 4) {
+                cout << "\n--- Teacher Login ---\n";
+                string email = InputHandler::getSafeEmail("Enter Email: ");
+                string password = InputHandler::getSafeString("Enter Password: ");
+
+                int teacherIdx = auth.loginTeacher(email, password);
+                Teacher& teacher = auth.getTeacher(teacherIdx);
+
+                int ch;
+                do {
+                    cout << "\n-- Teacher Menu --\n";
+                    cout << "1. Create Course\n2. Add Notes\n3. Create Assignment\n0. Logout\n";
+                    cout << "Enter choice: ";
+                    
+                    ch = InputHandler::getSafeInt();
+
+                    if (ch == 1) {
+                        string c = InputHandler::getSafeString("Enter course name: ");
+                        courseCtrl.createCourse(c);
+                    }
+                    else if (ch == 2) {
+                        string c = InputHandler::getSafeString("Enter course name: ");
+                        teacher.addNotes(c);
+                    }
+                    else if (ch == 3) {
+                        string c = InputHandler::getSafeString("Enter course name: ");
+                        string tname = InputHandler::getSafeString("Enter assignment title: ");
+                        teacher.createAssignment(c, tname);
+                    }
+                    else if (ch != 0) {
+                        cout << "Invalid choice\n";
+                    }
+
+                } while (ch != 0);
+                
+                cout << "Logged out\n";
+            }
+            else if (choice == 0) {
+                cout << "Goodbye!\n";
+                break;
+            }
+            else {
+                cout << "Invalid choice. Please try again.\n";
+            }
+
+        } catch (exception &e) {
+            cout << "Error: " << e.what() << endl;
+        }
+    }
+
+    return 0;
+}
